@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { applicationUrl, initializeApp } from '../../scripts/initialize-app.mjs';
+import { applicationUrl, initializeApp, waitForApplication } from '../../scripts/initialize-app.mjs';
 
 const env = { DOMAIN: 'firemail.pp.ua', JWT_SECRET: 'test-secret' };
 
@@ -66,5 +66,55 @@ describe('application initialization without Cloudflare credentials', () => {
 		await expect(initializeApp(env, { fetchImpl })).rejects.toThrow();
 		expect(JSON.stringify(console.log.mock.calls)).not.toContain('private-value');
 		expect(JSON.stringify(console.log.mock.calls)).not.toContain(env.JWT_SECRET);
+	});
+});
+
+describe('production commit verification', () => {
+	const commit = 'a'.repeat(40);
+	const deployedEnv = { ...env, GITHUB_SHA: commit };
+
+	it('waits for the expected application commit before initializing', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(Response.json({ commit: 'b'.repeat(40) }))
+			.mockResolvedValueOnce(Response.json({ commit }))
+			.mockResolvedValueOnce(new Response('success'));
+		const sleep = vi.fn();
+		await initializeApp(deployedEnv, { fetchImpl, sleep });
+		expect(fetchImpl.mock.calls[0][0]).toContain('/deployment.json?');
+		expect(fetchImpl.mock.calls[1][0]).toContain('/deployment.json?');
+		expect(fetchImpl.mock.calls[2][0]).toContain('/api/init/');
+		expect(sleep).toHaveBeenCalledOnce();
+	});
+
+	it('does not initialize production when only a Preview has updated', async () => {
+		const fetchImpl = vi.fn().mockImplementation(async () => Response.json({ commit: 'b'.repeat(40) }));
+		await expect(initializeApp(deployedEnv, { fetchImpl, sleep: vi.fn() })).rejects.toThrow('successful Preview does not update production');
+		expect(fetchImpl.mock.calls.some(([url]) => url.includes('/api/init/'))).toBe(false);
+	});
+
+	it('waits through the SPA fallback for an application without the version file', async () => {
+		const fetchImpl = vi.fn()
+			.mockResolvedValueOnce(new Response('<html>Old application</html>'))
+			.mockResolvedValueOnce(Response.json({ commit }));
+		await waitForApplication(deployedEnv, { fetchImpl, sleep: vi.fn() });
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+		expect(fetchImpl.mock.calls[0][1].cache).toBe('no-store');
+	});
+
+	it('does not accept an HTTP error page as proof of deployment', async () => {
+		const fetchImpl = vi.fn().mockImplementation(async () => Response.json({ commit }, { status: 503 }));
+		await expect(waitForApplication(deployedEnv, { fetchImpl, sleep: vi.fn(), maxAttempts: 2 })).rejects.toThrow('not serving this commit');
+	});
+
+	it('does not expose the initialization secret during version verification', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(Response.json({ commit }));
+		await waitForApplication(deployedEnv, { fetchImpl });
+		expect(fetchImpl.mock.calls[0][0]).not.toContain(env.JWT_SECRET);
+	});
+
+	it('rejects a missing commit SHA before making requests', async () => {
+		const fetchImpl = vi.fn();
+		await expect(waitForApplication(env, { fetchImpl })).rejects.toThrow('full GitHub commit SHA');
+		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 });

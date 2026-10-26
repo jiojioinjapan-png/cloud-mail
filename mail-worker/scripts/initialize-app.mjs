@@ -24,6 +24,33 @@ export function applicationUrl(env) {
 	return url.origin;
 }
 
+export async function waitForApplication(env, { fetchImpl = fetch, sleep = setTimeout, maxAttempts = 12 } = {}) {
+	const origin = applicationUrl(env);
+	if (!/^[a-f\d]{40}$/i.test(env.GITHUB_SHA || '')) throw new Error('A full GitHub commit SHA is required to verify the deployed application');
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		let info;
+		try {
+			const response = await fetchImpl(`${origin}/deployment.json?commit=${env.GITHUB_SHA}&attempt=${attempt}`, {
+				redirect: 'error', cache: 'no-store',
+				headers: { 'Cache-Control': 'no-cache' },
+				signal: AbortSignal.timeout(15000)
+			});
+			if (response.ok) info = await response.json();
+		} catch {
+			// 旧版本可能没有版本文件，或仍返回 SPA 页面；等待正式部署生效。
+		}
+		if (info?.commit === env.GITHUB_SHA) {
+			console.log(`Production application is serving commit ${env.GITHUB_SHA.slice(0, 7)}`);
+			return;
+		}
+		if (attempt < maxAttempts) {
+			console.log(`Waiting for production application commit ${env.GITHUB_SHA.slice(0, 7)} (${attempt}/${maxAttempts})`);
+			await sleep(10000);
+		}
+	}
+	throw new Error('The application is not serving this commit. Check the Cloudflare Production branch and deploy command; a successful Preview does not update production');
+}
+
 export async function initializeApp(env, { fetchImpl = fetch, sleep = setTimeout } = {}) {
 	const origin = applicationUrl(env);
 	const secret = env.JWT_SECRET;
@@ -31,6 +58,7 @@ export async function initializeApp(env, { fetchImpl = fetch, sleep = setTimeout
 		throw new Error('JWT_SECRET must match the deployed Worker runtime variable jwt_secret');
 	}
 	if (env.GITHUB_ACTIONS === 'true') console.log(`::add-mask::${secret}`);
+	if (env.GITHUB_SHA) await waitForApplication(env, { fetchImpl, sleep });
 	const endpoint = `${origin}/api/init/${encodeURIComponent(secret)}`;
 	const maxAttempts = 5;
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {

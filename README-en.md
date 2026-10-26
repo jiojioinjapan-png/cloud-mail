@@ -101,7 +101,7 @@ With only one domain, you can create multiple different email addresses, similar
 
 ## Automatic deployment, binding preservation, and initialization
 
-Cloudflare's Git integration builds and deploys the Worker. GitHub Actions waits for **Workers Builds: cloud-mail** to succeed for the same commit, then calls the application's initialization endpoint. Failed deployments or timeouts stop initialization. **No Cloudflare API token or account ID is needed in GitHub**; reading build checks uses the automatically provided GitHub Actions token.
+Cloudflare's Git integration builds and deploys the Worker. GitHub Actions waits for **Workers Builds: cloud-mail** to succeed for the same commit, verifies the production site's `/deployment.json` commit, then calls the initialization endpoint. Failed builds, an outdated production site, or timeouts stop initialization. **No Cloudflare API token or account ID is needed in GitHub**; reading build checks uses the automatically provided GitHub Actions token.
 
 The default `wrangler.toml` uses upload metadata `keep_bindings` to preserve dashboard-managed KV, D1, R2, email, and AI bindings, as well as runtime variables and secrets. Initially bind `kv` and `db` in Cloudflare and configure the runtime `domain`, `admin`, and `jwt_secret`. Future deployments retain those bindings. See [Cloudflare upload metadata](https://developers.cloudflare.com/workers/configuration/multipart-upload-metadata/).
 
@@ -115,6 +115,8 @@ Configure Cloudflare **Worker → Settings → Builds** as follows:
 | Deploy command | `pnpm run deploy` |
 
 The production deploy script explicitly selects `mail-worker/wrangler.toml`. `wrangler-dev.toml` and `wrangler-test.toml` contain example resource IDs for development and testing; `wrangler-action.toml` is the legacy deployment template. If logs reference nonexistent example KV/D1 IDs, check the deployed branch, commit, and configuration file. Cloudflare Builds compiles the frontend through the build command above.
+
+The installation `postinstall` hook also builds the frontend and writes `dist/deployment.json`, so Preview jobs have complete assets even when their build command is empty. If Preview builds are enabled, configure the same build command and root directory under **Previews Base**, with `pnpm run preview` as the Preview command. Logs showing `wrangler preview` describe a Preview build; the production site requires `pnpm run deploy` on the Production `send` branch. Actions verifies the production commit before applying database initialization.
 
 Configure repository **Settings → Secrets and variables → Actions** values:
 

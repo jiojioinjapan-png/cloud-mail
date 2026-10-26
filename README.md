@@ -107,7 +107,7 @@
 
 ## 自动部署、保留绑定与自动初始化
 
-Cloudflare 的 Git 集成负责构建和部署，GitHub Actions 等待同一次提交的 **Workers Builds: cloud-mail** 检查成功后，自动调用应用初始化接口；部署失败或等待超时会停止。**GitHub 不需要 Cloudflare API Token 或 Account ID**，读取部署检查使用 Actions 自动提供的 GitHub Token。
+Cloudflare 的 Git 集成负责构建和部署。GitHub Actions 先等待同一次提交的 **Workers Builds: cloud-mail** 检查成功，再确认正式站点的 `/deployment.json` 提交号与本次一致，最后调用初始化接口；部署失败、正式站点未更新或等待超时会停止。**GitHub 不需要 Cloudflare API Token 或 Account ID**，读取部署检查使用 Actions 自动提供的 GitHub Token。
 
 默认 `wrangler.toml` 通过上传元数据的 `keep_bindings` 保留控制台已有的 KV、D1、R2、邮件服务、AI 绑定及运行时变量和密钥。首次使用需在 Cloudflare 绑定 `kv`、`db`，配置运行时 `domain`、`admin`、`jwt_secret`；以后部署沿用这些绑定。保留机制见 [Cloudflare 上传元数据说明](https://developers.cloudflare.com/workers/configuration/multipart-upload-metadata/)。
 
@@ -121,6 +121,8 @@ Cloudflare **Worker → Settings → Builds** 使用以下设置：
 | 部署命令 | `pnpm run deploy` |
 
 正式部署命令明确使用 `mail-worker/wrangler.toml`。`wrangler-dev.toml`、`wrangler-test.toml` 包含示例资源 ID，分别用于开发和测试；`wrangler-action.toml` 是旧部署模板。若日志中出现不存在的示例 KV/D1 ID，请核对所部署的分支、提交和配置文件。Cloudflare Builds 的前端构建由上面的构建命令完成。
+
+依赖安装时的 `postinstall` 也会自动构建前端并生成 `dist/deployment.json`，因此构建命令留空的预览任务也有完整静态文件。若启用预览构建，在 **Previews Base** 中使用同样的构建命令、根目录，预览命令为 `pnpm run preview`。日志执行 `wrangler preview` 表示该次是预览构建；正式站点需要 **Production** 下的 `send` 分支执行 `pnpm run deploy`。Actions 会验证正式站点提交号，预览成功不会直接触发生产数据库初始化。
 
 在仓库 **Settings → Secrets and variables → Actions** 配置：
 

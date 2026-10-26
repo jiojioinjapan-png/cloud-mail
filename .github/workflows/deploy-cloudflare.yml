@@ -23,7 +23,7 @@ jobs:
     if: github.ref_name == (vars.PRODUCTION_BRANCH || 'send')
     name: Wait for Cloudflare and initialize application
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       NAME: ${{ secrets.NAME || vars.NAME || 'cloud-mail' }}
       DOMAIN: ${{ secrets.DOMAIN || vars.DOMAIN }}

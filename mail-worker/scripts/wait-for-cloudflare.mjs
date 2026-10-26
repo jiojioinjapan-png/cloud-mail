@@ -28,7 +28,7 @@ export async function waitForCloudflare(env, { fetchImpl = fetch, sleep = setTim
 			if (check.conclusion !== 'success') {
 				throw new Error(`Cloudflare deployment ${check.conclusion || 'did not succeed'}; initialization stopped`);
 			}
-			console.log(`Cloudflare deployed commit ${env.GITHUB_SHA.slice(0, 7)} successfully`);
+			console.log(`Cloudflare build passed for commit ${env.GITHUB_SHA.slice(0, 7)}`);
 			return;
 		}
 		if (attempt < maxAttempts) {
