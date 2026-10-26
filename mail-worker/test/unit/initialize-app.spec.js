@@ -24,7 +24,7 @@ describe('application initialization without Cloudflare credentials', () => {
 		await initializeApp({ ...env, JWT_SECRET: 'secret?with/#characters' }, { fetchImpl });
 		expect(fetchImpl).toHaveBeenCalledOnce();
 		expect(fetchImpl.mock.calls[0][0]).toBe('https://firemail.pp.ua/api/init/secret%3Fwith%2F%23characters');
-		expect(fetchImpl.mock.calls[0][1].redirect).toBe('error');
+		expect(fetchImpl.mock.calls[0][1].redirect).toBe('manual');
 	});
 
 	it.each(['', 'bad\nsecret'])('rejects an empty or multiline secret', async JWT_SECRET => {
@@ -116,5 +116,29 @@ describe('production commit verification', () => {
 		const fetchImpl = vi.fn();
 		await expect(waitForApplication(env, { fetchImpl })).rejects.toThrow('full GitHub commit SHA');
 		expect(fetchImpl).not.toHaveBeenCalled();
+	});
+});
+
+describe('Cloudflare Access diagnostics', () => {
+	it('reports an Access login redirect immediately instead of misreporting an old version', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response('', {
+			status: 302, headers: { Location: 'https://example.cloudflareaccess.com/cdn-cgi/access/login/app' }
+		}));
+		await expect(waitForApplication({ ...env, GITHUB_SHA: 'a'.repeat(40) }, { fetchImpl })).rejects.toThrow('Cloudflare Access blocks initialization');
+		expect(fetchImpl).toHaveBeenCalledOnce();
+	});
+
+	it('reports an Access redirect from the initialization endpoint without retrying it', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response('', {
+			status: 302, headers: { Location: '/cdn-cgi/access/login' }
+		}));
+		await expect(initializeApp(env, { fetchImpl })).rejects.toThrow('Cloudflare Access blocks initialization');
+		expect(fetchImpl).toHaveBeenCalledOnce();
+	});
+
+	it('does not forward initialization credentials to an unexpected redirect target', async () => {
+		const fetchImpl = vi.fn().mockResolvedValue(new Response('', { status: 302, headers: { Location: 'https://other.example.com/' } }));
+		await expect(initializeApp(env, { fetchImpl })).rejects.toThrow('redirected this request');
+		expect(fetchImpl).toHaveBeenCalledOnce();
 	});
 });

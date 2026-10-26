@@ -2,6 +2,20 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 
+class ApplicationAccessError extends Error {}
+
+async function fetchApplication(url, fetchImpl, options) {
+	const response = await fetchImpl(url, { ...options, redirect: 'manual' });
+	if (response.status >= 300 && response.status < 400) {
+		const location = response.headers.get('Location') || '';
+		if (location.includes('.cloudflareaccess.com/') || location.includes('/cdn-cgi/access/')) {
+			throw new ApplicationAccessError('Cloudflare Access blocks initialization. Configure endpoint-specific Access policies for /deployment.json and /api/init/*');
+		}
+		throw new ApplicationAccessError('The application redirected this request. Check DOMAIN/APP_URL; redirects are not followed with initialization credentials');
+	}
+	return response;
+}
+
 export function applicationUrl(env) {
 	let address = (env.APP_URL || env.DOMAIN || '').trim();
 	if (address.startsWith('[')) {
@@ -30,13 +44,14 @@ export async function waitForApplication(env, { fetchImpl = fetch, sleep = setTi
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		let info;
 		try {
-			const response = await fetchImpl(`${origin}/deployment.json?commit=${env.GITHUB_SHA}&attempt=${attempt}`, {
-				redirect: 'error', cache: 'no-store',
+			const response = await fetchApplication(`${origin}/deployment.json?commit=${env.GITHUB_SHA}&attempt=${attempt}`, fetchImpl, {
+				cache: 'no-store',
 				headers: { 'Cache-Control': 'no-cache' },
 				signal: AbortSignal.timeout(15000)
 			});
 			if (response.ok) info = await response.json();
-		} catch {
+		} catch (error) {
+			if (error instanceof ApplicationAccessError) throw error;
 			// 旧版本可能没有版本文件，或仍返回 SPA 页面；等待正式部署生效。
 		}
 		if (info?.commit === env.GITHUB_SHA) {
@@ -65,9 +80,10 @@ export async function initializeApp(env, { fetchImpl = fetch, sleep = setTimeout
 		let response;
 		let body;
 		try {
-			response = await fetchImpl(endpoint, { redirect: 'error', signal: AbortSignal.timeout(60000) });
+			response = await fetchApplication(endpoint, fetchImpl, { signal: AbortSignal.timeout(60000) });
 			body = (await response.text()).trim();
-		} catch {
+		} catch (error) {
+			if (error instanceof ApplicationAccessError) throw error;
 			response = undefined;
 			if (attempt === maxAttempts) {
 				throw new Error('Cannot reach the application. Confirm Cloudflare deployment succeeded and DOMAIN/APP_URL is correct');

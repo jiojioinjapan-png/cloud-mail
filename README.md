@@ -138,6 +138,15 @@ Cloudflare **Worker → Settings → Builds** 使用以下设置：
 
 初始化只执行数据库升级并刷新设置缓存，不部署 Worker、不创建资源。网络或服务端短暂错误会重试；密钥不匹配或响应不是 `success` 会报错。GitHub 变量不会同步到 Cloudflare：Actions 的 `DOMAIN` 定位初始化地址，Worker 的 `domain` 仍为邮箱域名数组（如 `["firemail.pp.ua"]`）；旧的 Actions 域名数组使用第一项，访问地址不同请设 `APP_URL`。
 
+若应用启用了 Cloudflare Access，并希望 Actions 无需额外凭据，进入 **Zero Trust → Access → Applications**，为以下路径创建独立的 Self-hosted 应用，分别设置 **Bypass → Include → Everyone**：
+
+| 域名 | 路径 | 用途 |
+| --- | --- | --- |
+| `firemail.pp.ua`（替换为应用域名） | `deployment.json` | 公开的构建提交号 |
+| 同上 | `api/init/*` | 初始化接口，应用仍验证 `JWT_SECRET` |
+
+保留原来覆盖整个站点的登录策略，仅对这两个路径建立更具体的应用；不要把全站策略改为 Everyone。Cloudflare 对更具体路径优先应用其独立策略，见 [应用路径](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/) 和 [路径放行](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/#bypass-a-public-endpoint)。工作流不会修改 Access 配置，遇到 Access 登录重定向会明确报错。
+
 ## Mailjet 发信配置
 
 1. 更新部署后，Actions 自动执行 `/api/init/<JWT_SECRET>`，添加 `mailjet_tokens` 字段并刷新设置缓存；也可手动重跑初始化工作流。

@@ -132,6 +132,15 @@ Changes to application code on the production branch (default `send`) trigger in
 
 Initialization upgrades the database and refreshes cached settings without deploying Workers or creating resources. Temporary network/server errors are retried; mismatched secrets or responses other than `success` fail. GitHub variables are not synchronized to Cloudflare: the Actions `DOMAIN` locates the initialization endpoint, while the Worker runtime `domain` remains an array of email domains such as `["firemail.pp.ua"]`. Legacy Actions domain arrays use their first entry; set `APP_URL` when the application is hosted elsewhere.
 
+If Cloudflare Access protects the application and Actions should require no additional credentials, open **Zero Trust → Access → Applications**. Create separate Self-hosted applications for the following paths, each with **Bypass → Include → Everyone**:
+
+| Hostname | Path | Purpose |
+| --- | --- | --- |
+| Your application hostname | `deployment.json` | Public build commit identifier |
+| Same hostname | `api/init/*` | Initialization; the application still verifies `JWT_SECRET` |
+
+Keep the existing whole-site login policy, and create more specific applications for only these endpoints. Do not change the whole-site policy to Everyone. More specific paths use their own policy, as described in [Application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/) and [Bypass a public endpoint](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/#bypass-a-public-endpoint). The workflow does not modify Access settings, and reports Access login redirects explicitly.
+
 ## Mailjet sending configuration
 
 1. After deployment, Actions automatically calls `/api/init/<JWT_SECRET>` to add `mailjet_tokens` and refresh cached settings. The initialization workflow can also be rerun manually.
