@@ -1,5 +1,7 @@
 name: ♻️ Initialize cloud-mail after Cloudflare deployment
 
+# Cloudflare dashboard build-setting changes apply to the next build.
+# This workflow initializes only after the matching production commit succeeds.
 on:
   push:
     paths:
