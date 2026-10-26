@@ -45,3 +45,19 @@ jobs:
 
       - name: Initialize database and refresh settings
         run: node mail-worker/scripts/initialize-app.mjs
+
+      - name: Report successful initialization
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { applicationUrl } from './mail-worker/scripts/initialize-app.mjs';
+
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            'Cloudflare deployment and application initialization succeeded.',
+            '',
+            `- Application: ${applicationUrl(process.env)}`,
+            `- Branch: ${process.env.GITHUB_REF_NAME}`,
+            `- Commit: ${process.env.GITHUB_SHA}`,
+            ''
+          ].join('\n'));
+          NODE
